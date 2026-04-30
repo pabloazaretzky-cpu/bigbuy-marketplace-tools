@@ -91,7 +91,7 @@ def ejecutar_analisis_novedades():
                 query = urllib.parse.quote(f"{item['id']} {item['name']}")
                 link_bol = f"https://www.bol.com/nl/s/?searchtext={query}"
 
-            margen_vs_mercado = round(precio_bol - precio_minimo, 2) if precio_bol else None
+            margen_vs_mercado = round((precio_bol - precio_minimo) / 1.21, 2) if precio_bol else None
 
             resultados.append({
                 'ID_Novedad': item['id'],
