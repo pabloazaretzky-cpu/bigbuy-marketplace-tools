@@ -25,6 +25,7 @@ jobs:
       - name: Descargar catálogo BigBuy
         working-directory: Bol
         env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
           FTP_USER: ${{ secrets.FTP_USER }}
           FTP_PASS: ${{ secrets.FTP_PASS }}
         run: python descargar_catalogo.py
