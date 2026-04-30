@@ -40,6 +40,14 @@ jobs:
         working-directory: Bol
         run: python analizador_bundles.py
 
+      - name: Analizar todos los productos
+        working-directory: Bol
+        run: python analizador_productos
+
+      - name: Buscar tesoros para stock
+        working-directory: Bol
+        run: python tesoros_stock_nl
+
       - name: Analizar ML Global Selling
         working-directory: MercadoLibre
         run: python analizar_ml_global.py
@@ -51,6 +59,8 @@ jobs:
           path: |
             Bol/NOVEDADES_rentables_bol.xlsx
             Bol/propuestas_IA_TRANSPARENTE.xlsx
+            Bol/analisis_completo_con_gastos.xlsx
+            Bol/tesoros_para_testear_stock.xlsx
             MercadoLibre/analisis_ml_global.xlsx
           retention-days: 30
 

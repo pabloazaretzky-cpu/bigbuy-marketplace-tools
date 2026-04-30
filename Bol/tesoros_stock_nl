@@ -1,0 +1,139 @@
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
+import pandas as pd
+import os
+import urllib.parse
+from pathlib import Path
+from deep_translator import GoogleTranslator
+from excel_colores import colorear_excel, agregar_leyenda
+from envio_utils import calcular_envio_es_nl
+
+_DIR = Path(__file__).parent
+ARCHIVO_LOCAL  = str(_DIR / 'product_2399_es.csv')
+ARCHIVO_SALIDA = str(_DIR / 'tesoros_para_testear_stock.xlsx')
+
+# Filtros "tesoros": productos baratos, livianos y con mucho stock
+MIN_PVD    = 3
+MAX_PVD    = 10
+MIN_STOCK  = 150
+MAX_PESO   = 0.4  # kg
+
+def traducir_nl(nombres, chunk_size=40):
+    translator = GoogleTranslator(source='es', target='nl')
+    result = []
+    for i in range(0, len(nombres), chunk_size):
+        chunk = nombres[i:i + chunk_size]
+        try:
+            traducido = translator.translate('\n'.join(chunk))
+            partes = traducido.split('\n')
+            result.extend(partes if len(partes) == len(chunk) else chunk)
+        except Exception:
+            result.extend(chunk)
+    return result
+
+def clasificar(row):
+    g = row['Ganancia_Neta']
+    if g >= 5:  return 'GANADOR'
+    if g >= 3:  return 'POTENCIAL'
+    return 'MARGINAL'
+
+def generar_excel_tesoros():
+    if not os.path.exists(ARCHIVO_LOCAL):
+        print(f"❌ No se encuentra: {ARCHIVO_LOCAL}")
+        return
+
+    print("--- 💎 Buscando tesoros para stock en NL ---")
+
+    try:
+        df = pd.read_csv(ARCHIVO_LOCAL, sep=';', encoding='utf-8', low_memory=False)
+        df.columns = [c.strip().lower() for c in df.columns]
+
+        for col in ['pvd', 'stock', 'weight', 'width', 'height', 'depth']:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+        tesoros = df[
+            (df['pvd'] >= MIN_PVD) &
+            (df['pvd'] <= MAX_PVD) &
+            (df['stock'] > MIN_STOCK) &
+            (df['weight'] < MAX_PESO)
+        ].copy().sort_values('stock', ascending=False).head(200)
+
+        print(f"💎 Encontrados: {len(tesoros)} tesoros")
+
+        if tesoros.empty:
+            print("⚠️ Sin resultados con los filtros actuales.")
+            return
+
+        resultados = []
+
+        for _, item in tesoros.iterrows():
+            pvd   = item['pvd']
+            envio = calcular_envio_es_nl(item['weight'], item['width'], item['height'], item['depth'])
+
+            # Para productos baratos, ganancia objetivo conservadora
+            ganancia_neta = 3.00 if pvd < 5 else 5.00
+
+            pvp_sin_iva     = (pvd + envio + ganancia_neta + 1.00) / 0.88
+            precio_final    = round(pvp_sin_iva * 1.21, 2)
+            comision_bol    = round((pvp_sin_iva * 0.12) + 1.00, 2)
+            iva_btw         = round(pvp_sin_iva * 0.21, 2)
+            total_gastos    = round(pvd + envio + comision_bol + iva_btw, 2)
+
+            pvp_min_sin_iva = (pvd + envio + 1.00) / 0.88
+            precio_minimo   = round(pvp_min_sin_iva * 1.21, 2)
+
+            resultados.append({
+                'ID_BigBuy':           item['id'],
+                'EAN':                 item['ean13'],
+                'Nombre':              item['name'],
+                'Nombre_NL':           '',
+                'Stock':               int(item['stock']),
+                'Peso_kg':             item['weight'],
+                'Costo_PVD':           round(pvd, 2),
+                'Envio_ES_NL':         envio,
+                'Comision_Bol':        comision_bol,
+                'IVA_21':              iva_btw,
+                'Total_Gastos':        total_gastos,
+                'Precio_Minimo_Venta': precio_minimo,
+                'Ganancia_Neta':       ganancia_neta,
+                'PVP_Bol':             precio_final,
+                'Link_Bol':            '',
+                'Imagen1':             item['image1'] if pd.notna(item['image1']) else '',
+                'Imagen2':             item['image2'] if pd.notna(item['image2']) else '',
+                'Imagen3':             item['image3'] if pd.notna(item['image3']) else '',
+                'Imagen4':             item['image4'] if pd.notna(item['image4']) else '',
+            })
+
+        df_final = pd.DataFrame(resultados)
+
+        print("🌐 Traduciendo nombres al holandés...")
+        nombres_nl = traducir_nl(df_final['Nombre'].tolist())
+        df_final['Nombre_NL'] = nombres_nl
+        df_final['Link_Bol']  = [
+            f"https://www.bol.com/nl/s/?searchtext={urllib.parse.quote(n)}"
+            for n in nombres_nl
+        ]
+
+        df_final['Estado'] = df_final.apply(clasificar, axis=1)
+        cols = ['Estado'] + [c for c in df_final.columns if c != 'Estado']
+        df_final = df_final[cols]
+
+        orden = {'GANADOR': 0, 'POTENCIAL': 1, 'MARGINAL': 2}
+        df_final['_orden'] = df_final['Estado'].map(orden)
+        df_final = df_final.sort_values('_orden').drop(columns='_orden').reset_index(drop=True)
+
+        with pd.ExcelWriter(ARCHIVO_SALIDA, engine='openpyxl') as writer:
+            df_final.to_excel(writer, index=False, sheet_name='Tesoros')
+            colorear_excel(writer.sheets['Tesoros'], df_final)
+            agregar_leyenda(writer.book)
+
+        print(f"✅ Excel generado: {ARCHIVO_SALIDA}")
+        print(f"   🟢 GANADORES:  {(df_final['Estado'] == 'GANADOR').sum()}")
+        print(f"   🟡 POTENCIAL:  {(df_final['Estado'] == 'POTENCIAL').sum()}")
+        print(f"   🔴 MARGINAL:   {(df_final['Estado'] == 'MARGINAL').sum()}")
+
+    except Exception as e:
+        print(f"❌ Error: {e}")
+
+if __name__ == "__main__":
+    generar_excel_tesoros()

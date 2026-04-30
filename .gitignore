@@ -17,7 +17,5 @@ venv/
 # Carpetas de análisis locales (resultados generados)
 Bol/Analisis de rentabilidad
 Bol/Actualización de Stocks
-Bol/analizador_productos
 Bol/candidatos_a_stock
 Bol/low_margin_strategy
-Bol/tesoros_stock_nl
