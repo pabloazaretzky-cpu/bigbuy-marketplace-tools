@@ -1,0 +1,141 @@
+import pandas as pd
+import os
+from excel_colores import colorear_excel, agregar_leyenda
+from deep_translator import GoogleTranslator
+
+def traducir_nl(nombres, chunk_size=40):
+    """Translates a list of Spanish product names to Dutch using chunked requests."""
+    translator = GoogleTranslator(source='es', target='nl')
+    result = []
+    for i in range(0, len(nombres), chunk_size):
+        chunk = nombres[i:i + chunk_size]
+        try:
+            traducido = translator.translate('\n'.join(chunk))
+            partes = traducido.split('\n')
+            result.extend(partes if len(partes) == len(chunk) else chunk)
+        except Exception:
+            result.extend(chunk)
+    return result
+
+ARCHIVO_LOCAL  = "C:/Users/Admin/Python/Bol/product_2399_es.csv"
+ARCHIVO_SALIDA = "C:/Users/Admin/Python/Bol/propuestas_IA_TRANSPARENTE.xlsx"
+
+def clasificar_bundle(row):
+    # Clasifica por precio mínimo de venta (qué tan accesible es el bundle)
+    precio_min = row['Precio_Minimo_Venta']
+    if precio_min < 60:
+        return 'GANADOR'    # Precio bajo = fácil de vender, menor riesgo
+    if precio_min < 100:
+        return 'POTENCIAL'
+    return 'MARGINAL'
+
+def ejecutar_ia_transparente():
+    if not os.path.exists(ARCHIVO_LOCAL):
+        print("❌ Archivo no encontrado.")
+        return
+
+    print("--- 🧠 Motor IA: Filtrado de Volumen y Transparencia Financiera ---")
+
+    try:
+        df = pd.read_csv(ARCHIVO_LOCAL, sep=';', encoding='utf-8', low_memory=False)
+        df.columns = [c.strip().lower() for c in df.columns]
+
+        for col in ['pvd', 'stock', 'weight', 'width', 'height', 'depth']:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+        df = df[(df['weight'] < 10) & (df['width'] < 60) & (df['height'] < 60)]
+        df = df[df['stock'] > 15]
+
+        keywords_fuerte = ['robot', 'smart', 'led', 'pro', 'fryer', 'massage', 'sonic', 'electric']
+        estrellas = df[(df['pvd'] > 35) & (df['name'].str.contains('|'.join(keywords_fuerte), case=False))].copy()
+        accesorios = df[(df['pvd'] < 15) & (df['pvd'] > 3)].copy()
+
+        propuestas = []
+
+        for _, est in estrellas.iterrows():
+            combos = 0
+            for _, acc in accesorios.iterrows():
+                if combos >= 2:
+                    break
+
+                n_est, n_acc = est['name'].lower(), acc['name'].lower()
+
+                match = False
+                if any(x in n_est for x in ['fryer', 'cook', 'robot']) and any(y in n_acc for y in ['mold', 'papel', 'guante', 'pinza']): match = True
+                elif any(x in n_est for x in ['massage', 'sonic', 'facial']) and any(y in n_acc for y in ['gel', 'aceite', 'crema', 'limpiador']): match = True
+                elif any(x in n_est for x in ['led', 'smart', 'watch']) and any(y in n_acc for y in ['soporte', 'cable', 'funda', 'protector']): match = True
+
+                if match:
+                    costo_pvd = est['pvd'] + acc['pvd']
+                    envio = 8.50
+
+                    pvp_sin_iva = (costo_pvd + envio + 15 + 1) / 0.88
+                    pvp_final = round(pvp_sin_iva * 1.21, 2)
+                    comision = round((pvp_sin_iva * 0.12) + 1, 2)
+                    iva_bundle = round(pvp_sin_iva * 0.21, 2)
+
+                    pvp_min_sin_iva = (costo_pvd + envio + 1.00) / 0.88
+                    precio_minimo = round(pvp_min_sin_iva * 1.21, 2)
+                    total_gastos = round(costo_pvd + envio + comision + iva_bundle, 2)
+
+                    propuestas.append({
+                        'Pack': f"{est['name']} + {acc['name']}",
+                        'ID_Principal': est['id'],
+                        'EAN_Principal': est['ean13'],
+                        'ID_Acc': acc['id'],
+                        'EAN_Acc': acc['ean13'],
+                        'PVD_Pack': round(costo_pvd, 2),
+                        'Envio_Est': envio,
+                        'Comision_Bol': comision,
+                        'Total_Gastos': total_gastos,
+                        'Precio_Minimo_Venta': precio_minimo,
+                        'PVP_Bol_Final': pvp_final,
+                        'Ganancia_Neta': 15.00,
+                        'Peso_Total_Kg': round(est['weight'] + acc['weight'], 2),
+                        'Imagen1': est['image1'] if pd.notna(est['image1']) else '',
+                        'Imagen2': est['image2'] if pd.notna(est['image2']) else '',
+                        'Imagen3': est['image3'] if pd.notna(est['image3']) else '',
+                        'Imagen4': est['image4'] if pd.notna(est['image4']) else '',
+                    })
+                    combos += 1
+
+        if not propuestas:
+            print("⚠️ No hubo matches con estos filtros. Intentá bajando el PVD de estrellas.")
+            return
+
+        df_final = pd.DataFrame(propuestas)
+        df_final['Estado'] = df_final.apply(clasificar_bundle, axis=1)
+
+        # Traducción al holandés (cada parte del pack por separado)
+        print("🌐 Traduciendo nombres al holandés...")
+        nombres_es = df_final['Pack'].str.split(' + ', n=1, expand=True)
+        nombres_nl_principal = traducir_nl(nombres_es[0].tolist())
+        nombres_nl_acc       = traducir_nl(nombres_es[1].tolist())
+        df_final.insert(
+            df_final.columns.get_loc('Pack') + 1,
+            'Pack_NL',
+            [f"{p} + {a}" for p, a in zip(nombres_nl_principal, nombres_nl_acc)]
+        )
+
+        cols = ['Estado'] + [c for c in df_final.columns if c != 'Estado']
+        df_final = df_final[cols]
+
+        orden = {'GANADOR': 0, 'POTENCIAL': 1, 'MARGINAL': 2}
+        df_final['_orden'] = df_final['Estado'].map(orden)
+        df_final = df_final.sort_values('_orden').drop(columns='_orden').reset_index(drop=True)
+
+        with pd.ExcelWriter(ARCHIVO_SALIDA, engine='openpyxl') as writer:
+            df_final.to_excel(writer, index=False, sheet_name='Bundles')
+            colorear_excel(writer.sheets['Bundles'], df_final)
+            agregar_leyenda(writer.book)
+
+        print(f"✅ ¡LISTO! Excel generado en: {ARCHIVO_SALIDA}")
+        print(f"   🟢 GANADORES:  {(df_final['Estado'] == 'GANADOR').sum()}")
+        print(f"   🟡 POTENCIAL:  {(df_final['Estado'] == 'POTENCIAL').sum()}")
+        print(f"   🔴 MARGINAL:   {(df_final['Estado'] == 'MARGINAL').sum()}")
+
+    except Exception as e:
+        print(f"❌ Error: {e}")
+
+if __name__ == "__main__":
+    ejecutar_ia_transparente()
