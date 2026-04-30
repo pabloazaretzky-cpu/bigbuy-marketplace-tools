@@ -35,9 +35,9 @@ def calcular_envio_ml(peso_kg):
     return 40.00
 
 def es_marca_eu(brand):
-    if not brand:
-        return True  # Si no hay info, asumimos que puede ser EU
-    return brand.strip().lower() not in MARCAS_NO_EU
+    if not brand or str(brand).lower() in ('nan', 'none', ''):
+        return True
+    return str(brand).strip().lower() not in MARCAS_NO_EU
 
 def get_tipo_cambio_eur():
     """Returns dict of rates relative to EUR (e.g. {'MXN': 20.5, 'COP': 4400, ...})"""
