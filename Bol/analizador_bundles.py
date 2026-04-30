@@ -123,7 +123,17 @@ def ejecutar_ia_transparente():
                     costo_pvd = est['pvd'] + acc['pvd']
                     envio = 8.50
 
-                    pvp_sin_iva = (costo_pvd + envio + 15 + 1) / 0.88
+                    # Ganancia objetivo según costo del bundle
+                    if costo_pvd < 20:
+                        ganancia_obj = 8.00
+                    elif costo_pvd < 40:
+                        ganancia_obj = 12.00
+                    elif costo_pvd < 70:
+                        ganancia_obj = 18.00
+                    else:
+                        ganancia_obj = 25.00
+
+                    pvp_sin_iva = (costo_pvd + envio + ganancia_obj + 1) / 0.88
                     pvp_final = round(pvp_sin_iva * 1.21, 2)
                     comision = round((pvp_sin_iva * 0.12) + 1, 2)
                     iva_bundle = round(pvp_sin_iva * 0.21, 2)
@@ -148,7 +158,7 @@ def ejecutar_ia_transparente():
                         'Total_Gastos': total_gastos,
                         'Precio_Minimo_Venta': precio_minimo,
                         'PVP_Bol_Final': pvp_final,
-                        'Ganancia_Neta': 15.00,
+                        'Ganancia_Neta': ganancia_obj,
                         'Peso_Total_Kg': round(est['weight'] + acc['weight'], 2),
                         'Imagen1': est['image1'] if pd.notna(est['image1']) else '',
                         'Imagen2': est['image2'] if pd.notna(est['image2']) else '',
