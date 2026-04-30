@@ -25,11 +25,10 @@ ARCHIVO_LOCAL  = str(_DIR / 'product_2399_es.csv')
 ARCHIVO_SALIDA = str(_DIR / 'propuestas_IA_TRANSPARENTE.xlsx')
 
 def clasificar_bundle(row):
-    # Clasifica por precio mínimo de venta (qué tan accesible es el bundle)
-    precio_min = row['Precio_Minimo_Venta']
-    if precio_min < 60:
-        return 'GANADOR'    # Precio bajo = fácil de vender, menor riesgo
-    if precio_min < 100:
+    ganancia = row['Ganancia_Neta']
+    if ganancia > 10:
+        return 'GANADOR'
+    if ganancia > 5:
         return 'POTENCIAL'
     return 'MARGINAL'
 
