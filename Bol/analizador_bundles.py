@@ -1,3 +1,5 @@
+import sys
+sys.stdout.reconfigure(encoding='utf-8')
 import pandas as pd
 import os
 from excel_colores import colorear_excel, agregar_leyenda
@@ -51,6 +53,8 @@ def ejecutar_ia_transparente():
         accesorios = df[(df['pvd'] < 15) & (df['pvd'] > 3)].copy()
 
         propuestas = []
+        nombres_principal_es = []
+        nombres_acc_es = []
 
         for _, est in estrellas.iterrows():
             combos = 0
@@ -78,6 +82,8 @@ def ejecutar_ia_transparente():
                     precio_minimo = round(pvp_min_sin_iva * 1.21, 2)
                     total_gastos = round(costo_pvd + envio + comision + iva_bundle, 2)
 
+                    nombres_principal_es.append(est['name'])
+                    nombres_acc_es.append(acc['name'])
                     propuestas.append({
                         'Pack': f"{est['name']} + {acc['name']}",
                         'ID_Principal': est['id'],
@@ -106,11 +112,10 @@ def ejecutar_ia_transparente():
         df_final = pd.DataFrame(propuestas)
         df_final['Estado'] = df_final.apply(clasificar_bundle, axis=1)
 
-        # Traducción al holandés (cada parte del pack por separado)
+        # Traducción al holandés usando las listas recolectadas en el loop
         print("🌐 Traduciendo nombres al holandés...")
-        nombres_es = df_final['Pack'].str.split(' + ', n=1, expand=True)
-        nombres_nl_principal = traducir_nl(nombres_es[0].tolist())
-        nombres_nl_acc       = traducir_nl(nombres_es[1].tolist())
+        nombres_nl_principal = traducir_nl(nombres_principal_es)
+        nombres_nl_acc       = traducir_nl(nombres_acc_es)
         df_final.insert(
             df_final.columns.get_loc('Pack') + 1,
             'Pack_NL',
