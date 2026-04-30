@@ -22,12 +22,14 @@ def traducir_nl(nombres, chunk_size=40):
     return result
 
 # --- CONFIGURACIÓN ---
-ARCHIVO_LOCAL = "C:/Users/Admin/Python/Bol/product_2399_es.csv"
-ARCHIVO_SALIDA = "C:/Users/Admin/Python/Bol/NOVEDADES_rentables_bol.xlsx"
+from pathlib import Path
+_DIR = Path(__file__).parent
+ARCHIVO_LOCAL  = str(_DIR / 'product_2399_es.csv')
+ARCHIVO_SALIDA = str(_DIR / 'NOVEDADES_rentables_bol.xlsx')
 
-# Poner en True para consultar precios reales en Bol.com (~2 seg por producto)
-COMPARAR_BOL = True
-LIMITE_COMPARACION = 300
+# En GitHub Actions se pasa COMPARAR_BOL=false para evitar bloqueos de IP
+COMPARAR_BOL       = os.environ.get('COMPARAR_BOL', 'true').lower() == 'true'
+LIMITE_COMPARACION = int(os.environ.get('LIMITE_COMPARACION', '300'))
 
 def clasificar(row):
     if pd.notna(row.get('Margen_vs_Mercado')):

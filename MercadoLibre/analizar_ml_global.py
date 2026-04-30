@@ -7,8 +7,10 @@ from ml_api import (
 from excel_colores import colorear_excel, agregar_leyenda
 
 # --- CONFIGURACIÓN ---
-ARCHIVO_CSV    = "C:/Users/Admin/Python/Bol/product_2399_es.csv"
-ARCHIVO_SALIDA = "C:/Users/Admin/Python/MercadoLibre/analisis_ml_global.xlsx"
+from pathlib import Path
+_DIR = Path(__file__).parent
+ARCHIVO_CSV    = str(_DIR.parent / 'Bol' / 'product_2399_es.csv')
+ARCHIVO_SALIDA = str(_DIR / 'analisis_ml_global.xlsx')
 
 # Comisión ML + spread de conversión de moneda (~2%)
 COMISION_ML_TOTAL = 0.17  # 15% comisión + ~2% conversión

@@ -1,11 +1,12 @@
 import ftplib
+import os
+from pathlib import Path
 
-# REEMPLAZÁ CON LOS DATOS QUE TE DIO BIGBUY RECIÉN
-FTP_HOST = "ftp.dropshippershop.com"
-FTP_USER = "TU_USUARIO_FTP"
-FTP_PASS = "TU_PASSWORD_FTP"
+FTP_HOST      = "ftp.dropshippershop.com"
+FTP_USER      = os.environ.get('FTP_USER', 'TU_USUARIO_FTP')
+FTP_PASS      = os.environ.get('FTP_PASS', 'TU_PASSWORD_FTP')
 ARCHIVO_REMOTO = "/files/products/csv/standard/product_2399_es.csv"
-ARCHIVO_LOCAL = "C:/Users/Admin/Python/Bol/product_2399_es.csv"
+ARCHIVO_LOCAL  = str(Path(__file__).parent / 'product_2399_es.csv')
 
 def descargar_final():
     try:

@@ -19,8 +19,10 @@ def traducir_nl(nombres, chunk_size=40):
             result.extend(chunk)
     return result
 
-ARCHIVO_LOCAL  = "C:/Users/Admin/Python/Bol/product_2399_es.csv"
-ARCHIVO_SALIDA = "C:/Users/Admin/Python/Bol/propuestas_IA_TRANSPARENTE.xlsx"
+from pathlib import Path
+_DIR = Path(__file__).parent
+ARCHIVO_LOCAL  = str(_DIR / 'product_2399_es.csv')
+ARCHIVO_SALIDA = str(_DIR / 'propuestas_IA_TRANSPARENTE.xlsx')
 
 def clasificar_bundle(row):
     # Clasifica por precio mínimo de venta (qué tan accesible es el bundle)

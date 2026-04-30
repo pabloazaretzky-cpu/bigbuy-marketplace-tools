@@ -1,0 +1,54 @@
+name: Análisis Diario BigBuy
+
+on:
+  schedule:
+    - cron: '0 7 * * *'  # 7:00 UTC = 9:00 Países Bajos (hora de verano)
+  workflow_dispatch:      # Permite ejecutarlo manualmente desde GitHub
+
+jobs:
+  analisis:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout código
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Descargar catálogo BigBuy
+        working-directory: Bol
+        env:
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASS: ${{ secrets.FTP_PASS }}
+        run: python descargar_catalogo.py
+
+      - name: Analizar novedades Bol.com
+        working-directory: Bol
+        env:
+          COMPARAR_BOL: 'false'
+        run: python analizar_novedades.py
+
+      - name: Analizar bundles Bol.com
+        working-directory: Bol
+        run: python analizador_bundles.py
+
+      - name: Analizar ML Global Selling
+        working-directory: MercadoLibre
+        run: python analizar_ml_global.py
+
+      - name: Subir resultados
+        uses: actions/upload-artifact@v4
+        with:
+          name: analisis-${{ github.run_number }}
+          path: |
+            Bol/NOVEDADES_rentables_bol.xlsx
+            Bol/propuestas_IA_TRANSPARENTE.xlsx
+            MercadoLibre/analisis_ml_global.xlsx
+          retention-days: 30
