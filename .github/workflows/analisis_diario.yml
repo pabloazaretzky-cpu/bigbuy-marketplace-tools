@@ -53,3 +53,23 @@ jobs:
             Bol/propuestas_IA_TRANSPARENTE.xlsx
             MercadoLibre/analisis_ml_global.xlsx
           retention-days: 30
+
+      - name: Enviar notificación por email
+        if: always()
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          secure: true
+          username: ${{ secrets.GMAIL_USER }}
+          password: ${{ secrets.GMAIL_PASSWORD }}
+          subject: "BigBuy Análisis #${{ github.run_number }} - ${{ job.status == 'success' && 'Completado ✓' || 'Falló ✗' }}"
+          to: paglobalimports@gmail.com
+          from: BigBuy Análisis <${{ secrets.GMAIL_USER }}>
+          body: |
+            El análisis diario de BigBuy finalizó con estado: ${{ job.status }}
+
+            Descargá los Excel en:
+            https://github.com/pabloazaretzky-cpu/bigbuy-marketplace-tools/actions/runs/${{ github.run_id }}
+
+            Los archivos están disponibles por 30 días.
