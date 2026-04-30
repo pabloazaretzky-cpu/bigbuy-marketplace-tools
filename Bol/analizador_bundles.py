@@ -4,6 +4,7 @@ import pandas as pd
 import os
 from excel_colores import colorear_excel, agregar_leyenda
 from deep_translator import GoogleTranslator
+from envio_utils import calcular_envio_es_nl
 
 def traducir_nl(nombres, chunk_size=40):
     """Translates a list of Spanish product names to Dutch using chunked requests."""
@@ -121,7 +122,12 @@ def ejecutar_ia_transparente():
 
                 if match:
                     costo_pvd = est['pvd'] + acc['pvd']
-                    envio = 8.50
+                    peso_total = est['weight'] + acc['weight']
+                    # Dimensiones del producto más grande como referencia del paquete
+                    w = max(est['width'],  acc['width'])
+                    h = max(est['height'], acc['height'])
+                    d = max(est['depth'],  acc['depth'])
+                    envio = calcular_envio_es_nl(peso_total, w, h, d)
 
                     # Ganancia objetivo según costo del bundle
                     if costo_pvd < 20:

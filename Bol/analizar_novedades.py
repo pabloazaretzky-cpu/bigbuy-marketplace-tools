@@ -5,6 +5,7 @@ import os
 import urllib.parse
 from bol_scraper import buscar_en_bol
 from excel_colores import colorear_excel, agregar_leyenda
+from envio_utils import calcular_envio_es_nl
 from deep_translator import GoogleTranslator
 
 def traducir_nl(nombres, chunk_size=40):
@@ -51,7 +52,7 @@ def ejecutar_analisis_novedades():
 
         df['id_num'] = pd.to_numeric(df['id'].astype(str).str.extract('(\d+)', expand=False), errors='coerce')
 
-        for col in ['pvd', 'stock', 'weight']:
+        for col in ['pvd', 'stock', 'weight', 'width', 'height', 'depth']:
             df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
         df_novedades = df[(df['stock'] > 30) & (df['pvd'] > 15)].sort_values(by='id_num', ascending=False)
@@ -69,7 +70,7 @@ def ejecutar_analisis_novedades():
             pvd = item['pvd']
 
             ganancia = 5.00 if pvd < 25 else (12.00 if pvd < 60 else 18.00)
-            envio = 5.95 if item['weight'] < 2 else (8.50 if item['weight'] < 10 else 14.00)
+            envio = calcular_envio_es_nl(item['weight'], item['width'], item['height'], item['depth'])
 
             pvp_sin_iva = (pvd + envio + ganancia + 1.00) / 0.88
             precio_final = round(pvp_sin_iva * 1.21, 2)
