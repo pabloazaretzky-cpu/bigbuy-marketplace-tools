@@ -50,8 +50,55 @@ def ejecutar_ia_transparente():
         df = df[(df['weight'] < 10) & (df['width'] < 60) & (df['height'] < 60)]
         df = df[df['stock'] > 15]
 
-        keywords_fuerte = ['robot', 'smart', 'led', 'pro', 'fryer', 'massage', 'sonic', 'electric']
-        estrellas = df[(df['pvd'] > 35) & (df['name'].str.contains('|'.join(keywords_fuerte), case=False))].copy()
+        # Pares de afinidad: (keywords producto estrella, keywords accesorio)
+        PARES_AFINIDAD = [
+            # Cocina
+            (['fryer', 'cook', 'robot', 'oven', 'grill', 'blender', 'mixer', 'coffee', 'microwave', 'toaster'],
+             ['mold', 'papel', 'guante', 'pinza', 'cuchillo', 'peeler', 'rallador', 'espatula', 'baking', 'silicona']),
+            # Belleza / cuidado personal
+            (['massage', 'sonic', 'facial', 'hair', 'nail', 'beauty', 'depiladora', 'epilator', 'secar', 'brush'],
+             ['gel', 'aceite', 'crema', 'limpiador', 'serum', 'mask', 'algodon', 'esponja', 'cotton', 'cleanser']),
+            # Electrónica / tech
+            (['led', 'smart', 'watch', 'speaker', 'headphone', 'earphone', 'tablet', 'lamp', 'projector'],
+             ['soporte', 'cable', 'funda', 'protector', 'cargador', 'hub', 'case', 'stand', 'holder']),
+            # Fitness / deporte
+            (['fitness', 'yoga', 'gym', 'sport', 'running', 'cycling', 'exercise', 'training', 'jump'],
+             ['bottle', 'towel', 'bag', 'mat', 'band', 'glove', 'botella', 'toalla', 'mochila']),
+            # Jardín / exterior
+            (['garden', 'plant', 'outdoor', 'patio', 'terraza', 'jardin', 'cesped', 'irrigation'],
+             ['tool', 'glove', 'watering', 'guante', 'herramienta', 'spray', 'pot', 'maceta']),
+            # Limpieza del hogar
+            (['vacuum', 'aspiradora', 'cleaner', 'mop', 'sweep', 'steamer'],
+             ['bag', 'filter', 'brush', 'bolsa', 'filtro', 'cepillo', 'mop']),
+            # Seguridad / vigilancia
+            (['camera', 'alarm', 'sensor', 'vigilancia', 'security', 'doorbell'],
+             ['mount', 'cable', 'battery', 'soporte', 'bateria', 'bracket', 'hub']),
+            # Bebé / niños
+            (['baby', 'bebe', 'nino', 'infant', 'child', 'kids'],
+             ['toy', 'cream', 'wipe', 'juguete', 'crema', 'toalla', 'cotton']),
+            # Mascotas
+            (['pet', 'dog', 'cat', 'perro', 'gato', 'mascota'],
+             ['toy', 'feed', 'brush', 'collar', 'juguete', 'cepillo', 'snack']),
+            # Climatización
+            (['fan', 'ventilador', 'heater', 'calefactor', 'humidifier', 'purifier', 'aire'],
+             ['filter', 'filtro', 'timer', 'temporizador', 'cover', 'funda']),
+        ]
+
+        # Accesorios universales: combinan bien con casi cualquier producto
+        KEYWORDS_UNIVERSAL = [
+            'organizador', 'organizer', 'storage', 'bolsa', 'bag', 'light', 'luz',
+            'timer', 'temporizador', 'soporte', 'stand', 'holder', 'rack',
+        ]
+
+        MAX_COMBOS = 4  # Máximo de accesorios por producto estrella
+
+        keywords_fuerte = [
+            'robot', 'smart', 'led', 'pro', 'fryer', 'massage', 'sonic', 'electric',
+            'cook', 'oven', 'grill', 'blender', 'mixer', 'coffee', 'hair', 'nail',
+            'beauty', 'fitness', 'yoga', 'vacuum', 'aspiradora', 'camera', 'speaker',
+            'headphone', 'projector', 'fan', 'ventilador', 'heater', 'calefactor',
+        ]
+        estrellas = df[(df['pvd'] > 25) & (df['name'].str.contains('|'.join(keywords_fuerte), case=False))].copy()
         accesorios = df[(df['pvd'] < 15) & (df['pvd'] > 3)].copy()
 
         propuestas = []
@@ -61,15 +108,17 @@ def ejecutar_ia_transparente():
         for _, est in estrellas.iterrows():
             combos = 0
             for _, acc in accesorios.iterrows():
-                if combos >= 2:
+                if combos >= MAX_COMBOS:
                     break
 
                 n_est, n_acc = est['name'].lower(), acc['name'].lower()
 
-                match = False
-                if any(x in n_est for x in ['fryer', 'cook', 'robot']) and any(y in n_acc for y in ['mold', 'papel', 'guante', 'pinza']): match = True
-                elif any(x in n_est for x in ['massage', 'sonic', 'facial']) and any(y in n_acc for y in ['gel', 'aceite', 'crema', 'limpiador']): match = True
-                elif any(x in n_est for x in ['led', 'smart', 'watch']) and any(y in n_acc for y in ['soporte', 'cable', 'funda', 'protector']): match = True
+                match = any(
+                    any(x in n_est for x in kw_est) and any(y in n_acc for y in kw_acc)
+                    for kw_est, kw_acc in PARES_AFINIDAD
+                )
+                if not match:
+                    match = any(y in n_acc for y in KEYWORDS_UNIVERSAL)
 
                 if match:
                     costo_pvd = est['pvd'] + acc['pvd']
@@ -90,8 +139,10 @@ def ejecutar_ia_transparente():
                         'Pack': f"{est['name']} + {acc['name']}",
                         'ID_Principal': est['id'],
                         'EAN_Principal': est['ean13'],
+                        'Link_Principal_Bol': f"https://www.bol.com/nl/s/?searchtext={est['ean13']}",
                         'ID_Acc': acc['id'],
                         'EAN_Acc': acc['ean13'],
+                        'Link_Acc_Bol': f"https://www.bol.com/nl/s/?searchtext={acc['ean13']}",
                         'PVD_Pack': round(costo_pvd, 2),
                         'Envio_Est': envio,
                         'Comision_Bol': comision,
