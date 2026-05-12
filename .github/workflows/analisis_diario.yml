@@ -52,6 +52,14 @@ jobs:
         working-directory: MercadoLibre
         run: python analizar_ml_global.py
 
+      - name: Tendencias Bol x Alibaba
+        working-directory: Bol
+        run: python tendencias_alibaba.py
+
+      - name: Oportunidades por descuento
+        working-directory: Bol
+        run: python oportunidades_descuento.py
+
       - name: Subir resultados
         uses: actions/upload-artifact@v4.6.2
         with:
@@ -61,6 +69,8 @@ jobs:
             Bol/propuestas_IA_TRANSPARENTE.xlsx
             Bol/analisis_completo_con_gastos.xlsx
             Bol/tesoros_para_testear_stock.xlsx
+            Bol/tendencias_alibaba.xlsx
+            Bol/oportunidades_descuento.xlsx
             MercadoLibre/analisis_ml_global.xlsx
           retention-days: 30
 
