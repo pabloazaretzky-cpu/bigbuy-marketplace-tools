@@ -9,6 +9,7 @@ from openpyxl.styles import PatternFill, Font, Alignment
 from openpyxl.utils import get_column_letter
 
 from envio_utils import calcular_envio_es_nl
+from bol_scraper import buscar_en_bol
 
 _DIR = Path(__file__).parent
 ARCHIVO_CSV    = str(_DIR / 'product_2399_es.csv')
@@ -23,6 +24,12 @@ MIN_PVP            = 8.0   # evitar productos demasiado baratos para reventa
 # Comisiones Bol.com
 COMISION_BOL = 0.12
 FEE_FIJO_BOL = 1.00
+
+# Verificar precio real en Bol para cada producto (más lento pero más preciso).
+# Solo incluye productos donde se encontró el producto con confianza ALTA o MEDIA.
+# Poner en False para análisis rápido usando solo el PVP de BigBuy como referencia.
+VERIFICAR_PRECIOS_BOL = True
+DELAY_BOL = 2.0
 
 # ── Marcas con riesgo activo de denuncia IP en LATAM ──────────────────────────
 # Estas marcas tienen equipos legales que denuncian listings en ML activamente.
@@ -97,6 +104,10 @@ def clasificar(ganancia, riesgo):
 def ejecutar():
     print("=" * 65)
     print("  💰 Oportunidades por Descuento — BigBuy")
+    if VERIFICAR_PRECIOS_BOL:
+        print("  🔍 Modo: verificación de precios reales en Bol.com")
+    else:
+        print("  ⚡ Modo rápido: usando PVP de BigBuy como referencia")
     print("=" * 65)
 
     df = pd.read_csv(ARCHIVO_CSV, sep=';', encoding='utf-8', low_memory=False)
@@ -115,64 +126,93 @@ def ejecutar():
         (df['pvp_bigbuy'] >= MIN_PVP)
     ].copy()
 
-    # Calcular descuento: cuánto más barato es PVD vs PVP de BigBuy
     df['descuento_pct'] = ((df['pvp_bigbuy'] - df['pvd']) / df['pvp_bigbuy'] * 100).round(1)
-
-    # Margen potencial sobre precio de lista público (price)
     df['margen_vs_precio_lista'] = ((df['price'] - df['pvd']) / df['price'] * 100).round(1)
 
-    # Filtrar por descuento mínimo
     df = df[df['descuento_pct'] >= DESCUENTO_MIN_PCT].copy()
     print(f"\n📦 Productos con descuento >= {DESCUENTO_MIN_PCT}%: {len(df)}")
 
     resultados = []
+    sin_match_bol = 0
 
-    for _, item in df.iterrows():
+    for i, (_, item) in enumerate(df.iterrows()):
         pvd    = item['pvd']
         peso   = item['weight']
         nombre = str(item['name'])
         brand  = str(item.get('brand', ''))
+        ean    = str(item.get('ean13', ''))
 
         envio  = calcular_envio_es_nl(peso, item['width'], item['height'], item['depth'])
         riesgo, marca_riesgo = detectar_riesgo_ip(nombre, brand)
 
-        # Análisis Bol.com
-        pvp_bol_sugerido = calcular_pvp_bol(pvd, envio, ganancia=5.0)
-        ganancia_bol     = calcular_ganancia_bol(pvd, envio, item['pvp_bigbuy'])
-        # También calcular ganancia si vendemos al precio de lista público
-        ganancia_a_lista = calcular_ganancia_bol(pvd, envio, item['price']) if item['price'] > 0 else None
-
-        # Precio mínimo de venta (breakeven)
         pvp_min = round(((pvd + envio + FEE_FIJO_BOL) / (1 - COMISION_BOL)) * 1.21, 2)
 
-        estado = clasificar(ganancia_bol, riesgo)
+        # Precio de referencia para calcular ganancias
+        precio_real_bol = None
+        titulo_bol = ''
+        confianza_bol = ''
 
-        link_bol = f"https://www.bol.com/nl/s/?searchtext={urllib.parse.quote(nombre[:60])}"
+        if VERIFICAR_PRECIOS_BOL:
+            if (i + 1) % 20 == 0:
+                print(f"   → {i + 1}/{len(df)} verificados en Bol...")
+            resultado_bol = buscar_en_bol(
+                ean=ean if ean and ean != 'nan' else None,
+                nombre=nombre,
+                delay=DELAY_BOL,
+            )
+            confianza_bol = resultado_bol['confianza']
+            if confianza_bol in ('ALTA', 'MEDIA'):
+                precio_real_bol = resultado_bol['precio']
+                titulo_bol = resultado_bol['titulo_bol']
+            elif confianza_bol == 'NO_ENCONTRADO':
+                sin_match_bol += 1
+                # Producto no está en Bol — descartarlo si estamos en modo verificación
+                continue
 
-        resultados.append({
+        # Ganancias estimadas
+        ganancia_bol     = calcular_ganancia_bol(pvd, envio, item['pvp_bigbuy'])
+        ganancia_a_lista = calcular_ganancia_bol(pvd, envio, item['price']) if item['price'] > 0 else None
+        ganancia_real    = calcular_ganancia_bol(pvd, envio, precio_real_bol) if precio_real_bol else None
+
+        # Estado basado en precio real si está disponible, sino en PVP BigBuy
+        ganancia_para_estado = ganancia_real if ganancia_real is not None else ganancia_bol
+        estado = clasificar(ganancia_para_estado, riesgo)
+
+        link_bol = resultado_bol['url'] if VERIFICAR_PRECIOS_BOL and confianza_bol in ('ALTA', 'MEDIA') else \
+                   f"https://www.bol.com/nl/s/?searchtext={urllib.parse.quote(nombre[:60])}"
+
+        fila = {
             'Estado':              estado,
             'Riesgo_IP':           riesgo,
             'Marca_Riesgo':        marca_riesgo,
             'Categoria':           str(item.get('category', '')),
             'Nombre':              nombre,
+            'Titulo_Bol':          titulo_bol,
+            'Confianza_Match':     confianza_bol,
             'Brand_ID':            brand,
-            'EAN':                 item['ean13'],
+            'EAN':                 ean,
             'Stock':               int(item['stock']),
             'Peso_kg':             peso,
             'Costo_PVD_EUR':       round(pvd, 2),
             'PVP_BigBuy_EUR':      round(item['pvp_bigbuy'], 2),
             'Precio_Lista_EUR':    round(item['price'], 2) if item['price'] > 0 else '',
+            'Precio_Real_Bol_EUR': round(precio_real_bol, 2) if precio_real_bol else '',
             'Descuento_PVD_%':     item['descuento_pct'],
             'Margen_Lista_%':      item['margen_vs_precio_lista'] if item['price'] > 0 else '',
             'Envio_ES_NL_EUR':     envio,
             'PVP_Min_Venta_EUR':   pvp_min,
-            'PVP_Sugerido_Bol':    pvp_bol_sugerido,
             'Gan_a_PVP_BigBuy':    ganancia_bol,
             'Gan_a_Precio_Lista':  round(ganancia_a_lista, 2) if ganancia_a_lista is not None else '',
+            'Gan_a_Precio_Real':   round(ganancia_real, 2) if ganancia_real is not None else '',
             'Link_Bol':            link_bol,
             'Imagen1':             item['image1'] if pd.notna(item.get('image1')) else '',
             'Imagen2':             item['image2'] if pd.notna(item.get('image2')) else '',
-        })
+        }
+        resultados.append(fila)
+
+    if VERIFICAR_PRECIOS_BOL:
+        print(f"   ✅ Productos con match en Bol: {len(resultados)}")
+        print(f"   ❌ Sin match en Bol (descartados): {sin_match_bol}")
 
     if not resultados:
         print("⚠️  Sin resultados.")
@@ -180,7 +220,6 @@ def ejecutar():
 
     df_final = pd.DataFrame(resultados)
 
-    # Ordenar: RIESGO_IP al final, luego por ganancia desc
     orden = {'GANADOR': 0, 'POTENCIAL': 1, 'MARGINAL': 2, 'RIESGO_IP': 3}
     df_final['_ord'] = df_final['Estado'].map(orden).fillna(2)
     df_final = (df_final
@@ -199,12 +238,13 @@ def ejecutar():
     ri = (df_final['Estado'] == 'RIESGO_IP').sum()
 
     print(f"\n✅ Excel generado: {ARCHIVO_SALIDA}")
-    print(f"   🟢 GANADORES:   {g}  (ganancia > €15 al precio PVP de BigBuy)")
-    print(f"   🟡 POTENCIAL:   {p}  (ganancia €8–€15)")
-    print(f"   🔴 MARGINAL:    {m}  (ganancia < €8)")
-    print(f"   ⚫ RIESGO IP:   {ri} (marca puede denunciar en ML/Bol — revisar)")
-    print(f"\n💡 'Gan_a_Precio_Lista' = ganancia si vendés al precio de lista público.")
-    print(f"   Es el techo teórico si el mercado lo acepta.")
+    print(f"   🟢 GANADORES:   {g}")
+    print(f"   🟡 POTENCIAL:   {p}")
+    print(f"   🔴 MARGINAL:    {m}")
+    print(f"   ⚫ RIESGO IP:   {ri}")
+    if VERIFICAR_PRECIOS_BOL:
+        print(f"\n💡 'Gan_a_Precio_Real' = ganancia contra el precio real encontrado en Bol (más confiable).")
+    print(f"   'Gan_a_Precio_Lista' = ganancia contra el precio de lista público (techo teórico).")
 
 
 # ── Formato Excel ──────────────────────────────────────────────────────────────
@@ -245,18 +285,20 @@ def _leyenda(wb):
     ws.column_dimensions['B'].width = 75
 
     filas = [
-        ('HEADER',    'Estado',      'Cómo interpretar cada fila'),
-        ('GANADOR',   'GANADOR',     'Ganancia neta > €15 vendiendo al PVP de BigBuy en Bol.com'),
-        ('POTENCIAL', 'POTENCIAL',   'Ganancia €8–€15. Vale la pena evaluar.'),
-        ('MARGINAL',  'MARGINAL',    'Ganancia < €8 al PVP de BigBuy. Puede ser rentable a precio de lista.'),
-        ('RIESGO_IP', 'RIESGO_IP',   'Marca con enforcement activo en ML/Bol. No es ilegal revender, pero ML puede bajar el listing si la marca denuncia.'),
-        ('HEADER',    '',            ''),
-        ('HEADER',    'Columna',     'Descripción'),
-        ('HEADER',    'Descuento_%', 'Descuento del PVD sobre el PVP de BigBuy. A mayor %, mejor margen.'),
-        ('HEADER',    'Margen_Lista_%', 'Cuánto más barato es el PVD vs el precio de lista público (MSRP). El techo de lo que podés cobrar.'),
-        ('HEADER',    'Gan_a_PVP',   'Ganancia neta en Bol si vendés al PVP de BigBuy (caso conservador).'),
-        ('HEADER',    'Gan_a_Lista', 'Ganancia neta en Bol si vendés al precio de lista público (caso optimista).'),
-        ('HEADER',    'PVP_Min',     'Precio mínimo en Bol para no perder dinero (breakeven).'),
+        ('HEADER',    'Estado',           'Cómo interpretar cada fila'),
+        ('GANADOR',   'GANADOR',          'Ganancia neta > €15'),
+        ('POTENCIAL', 'POTENCIAL',        'Ganancia €8–€15. Vale la pena evaluar.'),
+        ('MARGINAL',  'MARGINAL',         'Ganancia < €8. Puede ser rentable a precio de lista.'),
+        ('RIESGO_IP', 'RIESGO_IP',        'Marca con enforcement activo. No es ilegal revender, pero pueden bajar el listing.'),
+        ('HEADER',    '',                 ''),
+        ('HEADER',    'Columna',          'Descripción'),
+        ('HEADER',    'Confianza_Match',  'ALTA = EAN verificado en Bol. MEDIA = match por nombre con alta similitud. BAJA = match dudoso.'),
+        ('HEADER',    'Precio_Real_Bol',  'Precio real encontrado en Bol.com para este producto. Vacío si no se encontró.'),
+        ('HEADER',    'Gan_a_Precio_Real','Ganancia real si vendés al precio actual de Bol. La columna más confiable.'),
+        ('HEADER',    'Gan_a_PVP_BigBuy', 'Ganancia estimada usando el PVP de BigBuy como precio de venta (referencia).'),
+        ('HEADER',    'Gan_a_Lista',      'Ganancia si vendés al precio de lista público (techo teórico).'),
+        ('HEADER',    'Descuento_%',      'Descuento del PVD sobre el PVP de BigBuy. A mayor %, mejor margen.'),
+        ('HEADER',    'PVP_Min',          'Precio mínimo en Bol para no perder dinero (breakeven).'),
     ]
 
     for r_idx, (fill_key, col_a, col_b) in enumerate(filas, 1):
